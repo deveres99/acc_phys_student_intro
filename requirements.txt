@@ -1,0 +1,7 @@
+# Python >= 3.10
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.7
+jupyter
+ipywidgets>=8      # optional at run time: sliders fall back to static plots without it
+pytest             # optional: tests also run with `python tests/run_tests.py`

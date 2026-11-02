@@ -96,20 +96,30 @@ class HenonRing:
         self.one_turn_map = make_one_turn_map(self.elements)
 
     def normalise(self, bunch):
-        """Physical (4, N) bunch -> normalised (x_hat, p_hat_x, y_hat, p_hat_y)."""
-        b = np.asarray(bunch, dtype=float)
-        out = np.empty_like(b[..., :4])
-        out[0, ...], out[1, ...] = normalise(b[0, ...], b[1, ...], self.betx, self.alfx)
-        out[2, ...], out[3, ...] = normalise(b[2, ...], b[3, ...], self.bety, self.alfy)
-        return out
+        """
+        Physical (x, px, y, py[, delta]) -> normalised (x_hat, p_hat_x, y_hat, p_hat_y).
+
+        Accepts one particle (4,), a bunch (4, N) or turn-by-turn coordinates
+        (n_turns + 1, 4, N) as in ``TrackResult.coords``.  The result has the
+        same layout with 4 coordinates (delta, if present, is dropped).
+        """
+        return self._transform(bunch, normalise)
 
     def denormalise(self, bunch_n):
-        """Normalised (4, N) bunch -> physical (x, px, y, py)."""
-        b = np.asarray(bunch_n, dtype=float)
-        out = np.empty_like(b[..., :4])
-        out[0, ...], out[1, ...] = denormalise(b[0, ...], b[1, ...], self.betx, self.alfx)
-        out[2, ...], out[3, ...] = denormalise(b[2, ...], b[3, ...], self.bety, self.alfy)
-        return out
+        """
+        Normalised (x_hat, p_hat_x, y_hat, p_hat_y) -> physical (x, px, y, py).
+        Same shapes as :meth:`normalise`.
+        """
+        return self._transform(bunch_n, denormalise)
+
+    def _transform(self, bunch, func):
+        b = np.asarray(bunch, dtype=float)
+        axis = 0 if b.ndim <= 2 else b.ndim - 2     # the coordinate axis
+        c = np.moveaxis(b, axis, 0)                 # coordinates first
+        out = np.empty((4,) + c.shape[1:])
+        out[0], out[1] = func(c[0], c[1], self.betx, self.alfx)
+        out[2], out[3] = func(c[2], c[3], self.bety, self.alfy)
+        return np.moveaxis(out, 0, axis)
 
     def __repr__(self):
         return (f"HenonRing(Qx={self.Qx}, Qy={self.Qy}, betx={self.betx}, "

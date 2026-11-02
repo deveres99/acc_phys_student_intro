@@ -357,7 +357,7 @@ class Quadrupole:
             return apply_matrix(particles, self.matrix()[:4, :4])
         # one matrix per particle, built vectorised from the formulas of thick_quad
         k = self.k / (1.0 + particles[4, :])
-        M = np.zeros((len(particles), 4, 4))
+        M = np.zeros((particles.shape[1], 4, 4))
         M[:, :2, :2] = _thick_quad_vec(k, self.L)
         M[:, 2:, 2:] = _thick_quad_vec(-k, self.L)
         return apply_matrix(particles, M)
@@ -388,11 +388,10 @@ def _thick_quad_vec(k: np.ndarray, L: float) -> np.ndarray:
     small = np.abs(k) * L**2 < 1e-10
     C = np.where(small, 1.0 - k * L**2 / 2, C)
     S = np.where(small, L - k * L**3 / 6, S)
-    kS = np.where(pos, -k*S, k*S)
     M = np.empty(k.shape + (2, 2))
     M[..., 0, 0] = C
     M[..., 0, 1] = S
-    M[..., 1, 0] = kS
+    M[..., 1, 0] = -k * S               # C' = -k S for both signs of k
     M[..., 1, 1] = C
     return M
 

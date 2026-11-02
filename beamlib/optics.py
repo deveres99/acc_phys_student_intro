@@ -514,35 +514,36 @@ def is_symplectic(M: np.ndarray, tol: float = 1e-9) -> bool:
 def numerical_jacobian(one_turn_map, z0, eps: float = 1e-7) -> np.ndarray:
     """
     Jacobian dz_out/dz_in of a map at the point z0 (central differences).
-    ``one_turn_map`` takes a bunch of shape (N, n) and returns the same shape.
-    All 2n displaced copies are tracked together as one bunch.
+    ``one_turn_map`` takes a bunch of shape (n, N) and returns the same shape.
+    All 2n displaced copies are tracked together as one bunch: column 2i is
+    z0 + eps in coordinate i, column 2i + 1 is z0 - eps.
     """
     z0 = np.asarray(z0, dtype=float)
     n = len(z0)
-    bunch = np.repeat(z0[None, :], 2 * n, axis=0)
+    bunch = np.repeat(z0[:, None], 2 * n, axis=1)
     for i in range(n):
-        bunch[2 * i, i] += eps
-        bunch[2 * i + 1, i] -= eps
+        bunch[i, 2 * i] += eps
+        bunch[i, 2 * i + 1] -= eps
     out = one_turn_map(bunch)
-    return ((out[0::2] - out[1::2]) / (2 * eps)).T
+    return (out[:, 0::2] - out[:, 1::2]) / (2 * eps)
 
 
 def find_closed_orbit(one_turn_map, delta: float = 0.0, guess=None,
                       tol: float = 1e-13, max_iter: int = 50) -> np.ndarray:
     """
     Closed orbit of a (possibly nonlinear) map by Newton iteration.
-    Works on 5-column bunches (x, px, y, py, delta); delta is held fixed.
+    Works on 5-row bunches (x, px, y, py, delta); delta is held fixed.
     Returns the 4-vector (x, px, y, py).
     """
     z = np.zeros(4) if guess is None else np.array(guess, dtype=float)
 
-    def f(zz):  # map restricted to the transverse coordinates
-        b = np.column_stack([zz, np.full(len(zz), delta)])
-        return one_turn_map(b)[:, :4]
+    def f(zz):  # map restricted to the transverse coordinates, zz has shape (4, N)
+        b = np.vstack([zz, np.full((1, zz.shape[1]), delta)])
+        return one_turn_map(b)[:4]
 
     for _ in range(max_iter):
         J = numerical_jacobian(f, z)
-        r = f(z[None, :])[0] - z
+        r = f(z[:, None])[:, 0] - z
         dz = np.linalg.solve(J - np.eye(4), -r)
         z = z + dz
         if np.max(np.abs(dz)) < tol:
@@ -557,7 +558,7 @@ def find_fixed_point(one_turn_map, z0, period: int = 1, dims=(0, 1),
 
     Parameters
     ----------
-    one_turn_map : callable bunch (N, 4) -> bunch (N, 4)
+    one_turn_map : callable bunch (4, N) -> bunch (4, N)
     z0 : initial guess (x, px, y, py)
     period : int
         Look for points that come back after ``period`` turns (e.g. 3 for
@@ -576,17 +577,17 @@ def find_fixed_point(one_turn_map, z0, period: int = 1, dims=(0, 1),
     dims = list(dims)
     z = np.array(z0, dtype=float)
 
-    def f(sub):  # period-turn map restricted to the chosen coordinates
-        b = np.repeat(z[None, :], len(sub), axis=0)
-        b[:, dims] = sub
+    def f(sub):  # period-turn map restricted to the chosen coordinates, sub has shape (len(dims), N)
+        b = np.repeat(z[:, None], sub.shape[1], axis=1)
+        b[dims] = sub
         for _ in range(period):
             b = one_turn_map(b)
-        return b[:, dims]
+        return b[dims]
 
     with np.errstate(all="ignore"):
         for _ in range(max_iter):
             sub = z[dims]
-            r = f(sub[None, :])[0] - sub
+            r = f(sub[:, None])[:, 0] - sub
             if not np.all(np.isfinite(r)):
                 return None, np.nan
             J = numerical_jacobian(f, sub, eps=1e-9)
@@ -600,6 +601,6 @@ def find_fixed_point(one_turn_map, z0, period: int = 1, dims=(0, 1),
         sub = z[dims]
         if not np.all(np.isfinite(sub)) or np.max(np.abs(sub)) > 1.0:
             return None, np.nan              # diverged (|x| > 1 m is not physical here)
-        if np.max(np.abs(f(sub[None, :])[0] - sub)) > 1e-10:
+        if np.max(np.abs(f(sub[:, None])[:, 0] - sub)) > 1e-10:
             return None, np.nan
         return z, float(np.trace(numerical_jacobian(f, sub, eps=1e-9)))
